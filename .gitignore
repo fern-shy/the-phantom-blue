@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# dev tooling
+node_modules/
+dev/out/
+dev/shots/
+*.log
+
+# editors
+.vscode/
+.idea/
+*.swp
