@@ -27,7 +27,9 @@
   .tile.over { background:#000; color:#fff; }
   .tile .n { position:absolute; left:10px; top:8px; }
   .tile .name { position:absolute; left:10px; right:10px; bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tile .head { position:absolute; bottom:0; height:6px; width:1px; background:#000; pointer-events:none; }
+  .tile .fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#d9d9d9; pointer-events:none; opacity:0; }
+  .tile .head { position:absolute; top:0; bottom:0; width:1px; background:#000; pointer-events:none; opacity:0; }
+  .tile .n, .tile .name { z-index:1; }
   #bar { position:fixed; left:var(--m); right:var(--m); bottom:0; height:var(--bar); display:flex; gap:22px; align-items:center; }
   #bar label { display:flex; gap:8px; align-items:center; }
   #bar input[type=range] { width:90px; accent-color:#000; cursor:default; }
@@ -59,7 +61,7 @@
   // build tiles
   for (var i = 0; i < N; i++) (function (i) {
     var el = document.createElement('div'); el.className = 'tile empty';
-    el.innerHTML = '<span class="n"></span><span class="name"></span><i class="head" hidden></i>';
+    el.innerHTML = '<i class="fill"></i><span class="n"></span><span class="name"></span><i class="head" hidden></i>';
         var t = { el: el, buf: null, src: null, gain: null, lvl: 0, target: 0, dur: 0, t0: 0, off: 0 };
     tiles.push(t); wall.appendChild(el);
     el.addEventListener('pointermove', function () { lastMove = performance.now(); });
@@ -145,7 +147,9 @@
       t.lvl += (t.target - t.lvl) * (1 - Math.exp(-dt / tau));
       if (Math.abs(t.lvl - t.target) < .001) t.lvl = t.target;
       var p = ((t.off + (ctx.currentTime - t.t0)) % t.dur) / t.dur;
-      t.el.querySelector('.head').style.left = (p * 100).toFixed(2) + '%';
+      var h = t.el.querySelector('.head'), f = t.el.querySelector('.fill');
+      h.style.left = (p * 100).toFixed(2) + '%'; f.style.width = (p * 100).toFixed(2) + '%';
+      h.style.opacity = f.style.opacity = t.lvl.toFixed(3);
     });
     // drift: wander when idle
     if (drift && ctx && now - lastMove > 8000 && now > (frame.next || 0)) {
@@ -164,7 +168,7 @@
   $('drift').onclick = function () { drift = !drift; this.classList.toggle('on', drift); lastMove = performance.now(); };
   function toggleHush() {
     if (!ctx) return; hushed = !hushed; $('hush').classList.toggle('on', hushed);
-    hushG.gain.cancelScheduledValues(ctx.currentTime); hushG.gain.setTargetAtTime(hushed ? 0 : 1, ctx.currentTime, .8);
+    hushG.gain.cancelScheduledValues(ctx.currentTime); hushG.gain.setTargetAtTime(hushed ? 0 : 1, ctx.currentTime, .005); // ~instant, 5ms constant avoids a click
   }
   $('hush').onclick = toggleHush;
   window.addEventListener('keydown', function (e) {
