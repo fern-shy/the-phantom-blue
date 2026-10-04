@@ -65,7 +65,7 @@
   <h1>the phantom blue</h1>
   <div id="gate-actions">
     <button id="go">enter</button>
-    <label class="gate-btn">load<input id="preload" type="file" accept="audio/*,.wav,.aif,.aiff,.mp3,.m4a,.aac,.flac,.ogg,.opus" multiple hidden></label>
+    <button id="load">load</button>
   </div>
 </div>
 <div id="wall"></div>
@@ -89,7 +89,12 @@
 (function () {
   'use strict';
   var N = 9, ctx, master, lp, hushG, tiles = [], hovered = -1, pinned = -1, hushed = false, drift = false, lastMove = 0, fileAt = 0;
-  var swell = 5, rel = 20, pending = [], wall = document.getElementById('wall'), msg = document.getElementById('msg');
+  var swell = 5, rel = 20, wall = document.getElementById('wall'), msg = document.getElementById('msg');
+  var STOCK = [
+    '01 allegory.mp3', '02 sake.mp3', '03 formulaic.mp3',
+    '04 magician.mp3', '05 nashville.mp3', '06 triptych.mp3',
+    '07 remiss.mp3', '08 onthou.mp3', '09 ephemera.mp3'
+  ];
   var driftMs = 22000, driftIdle = true, driftNext = 0, pull = null;
   var DRIFT_SLOW = 28000, DRIFT_FAST = 40, DRIFT_REACH = 260;
 
@@ -142,13 +147,22 @@
     var lim = ctx.createDynamicsCompressor(); lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .003; lim.release.value = .25;
     lp.connect(hushG); hushG.connect(master); master.connect(lim); lim.connect(ctx.destination);
     document.getElementById('gate').hidden = true;
-    if (pending.length) load(pending, 0);
+  }
+  async function loadStock() {
+    start();
+    for (var i = 0; i < STOCK.length && i < N; i++) {
+      try {
+        say('decoding ' + STOCK[i] + '…');
+        var res = await fetch(encodeURI(STOCK[i]));
+        if (!res.ok) throw new Error();
+        var buf = await decode(await res.arrayBuffer());
+        setTile(i, buf, STOCK[i].replace(/\.[^.]+$/, ''));
+        say('');
+      } catch (e) { say("can't load the bundled set — serve the folder or use the hosted page"); break; }
+    }
   }
   document.getElementById('go').onclick = start;
-  document.getElementById('preload').onchange = function () {
-    pending = audioFiles(this.files).slice(0, N);
-    this.value = '';
-  };
+  document.getElementById('load').onclick = loadStock;
   document.getElementById('file').onchange = function () {
     if (!this.files.length) return;
     if (!ctx) start();
