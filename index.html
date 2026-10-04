@@ -6,39 +6,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
 <style>
-  :root { --wall:#efefee; --ink:#2b2b2b; --mute:#9a9a9a; }
+  :root { --m:48px; --bar:56px; }
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
-  html,body { height:100%; margin:0; background:var(--wall); color:var(--ink);
-    font:11px/1.4 ui-monospace,"SF Mono",Menlo,monospace; letter-spacing:.08em; text-transform:lowercase;
+  html,body { height:100%; margin:0; background:#fff; color:#000; cursor:default;
+    font:11px/1.4 "Helvetica Neue",Helvetica,Arial,sans-serif; letter-spacing:.02em;
     -webkit-user-select:none; user-select:none; overflow:hidden; }
   #gate { position:fixed; inset:0; background:#fff; z-index:10; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:28px; }
-  #gate h1 { margin:0; font:300 22px/1 -apple-system,"Helvetica Neue",sans-serif; letter-spacing:.35em; }
-  #gate button { all:unset; cursor:pointer; padding:12px 34px; border:1px solid #ddd; border-radius:40px; color:var(--mute); }
-  #gate button:hover { border-color:#bbb; color:var(--ink); }
-  #gate small { color:var(--mute); }
-  #wall { position:fixed; inset:24px 24px 64px; display:grid; grid-template-columns:repeat(3,1fr);
-    grid-template-rows:repeat(3,1fr); gap:14px; }
-  .tile { position:relative; background:#fff; border-radius:4px; overflow:hidden; cursor:default;
-    box-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(0,0,0,.05), 0 10px 24px -14px rgba(0,0,0,.18);
-    transform:scale(calc(1 - var(--l,0) * .012)); }
-  .tile::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:var(--l,0);
-    background:radial-gradient(circle at var(--x,50%) var(--y,50%), rgba(0,0,0,.11), rgba(0,0,0,.03) 55%, transparent 80%);
-    box-shadow:inset 0 10px 40px -10px rgba(0,0,0,.22), inset 0 0 0 1px rgba(0,0,0,.05); }
-  .tile.empty { box-shadow:none; background:transparent; outline:1px dashed #d4d4d2; outline-offset:-1px; }
-  .tile.over { outline:1px solid #888; }
-  .tile .n { position:absolute; left:12px; top:10px; color:var(--mute); }
-  .tile .name { position:absolute; left:12px; right:12px; bottom:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tile .hint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--mute); }
-  .tile .head { position:absolute; top:0; bottom:0; width:1px; background:rgba(0,0,0,.18); pointer-events:none; }
-  .tile .x { position:absolute; right:10px; top:6px; cursor:pointer; color:var(--mute); display:none; }
-  .tile:hover .x { display:block; }
-  #bar { position:fixed; left:24px; right:24px; bottom:18px; height:30px; display:flex; gap:22px; align-items:center; color:var(--mute); }
+  #gate h1 { margin:0; font-weight:400; font-size:20px; letter-spacing:.02em; }
+  #gate button { all:unset; cursor:pointer; padding:10px 30px; border:1px solid #000; }
+  #gate button:hover { background:#000; color:#fff; }
+  #gate small { color:#000; }
+  #wall { position:fixed; left:50%; top:calc((100vh - var(--bar)) / 2); transform:translate(-50%,-50%);
+    width:min(calc(100vw - 2 * var(--m)), calc(100vh - var(--bar) - 2 * var(--m)));
+    aspect-ratio:1; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    border-top:1px solid #000; border-left:1px solid #000; }
+  .tile { position:relative; background:#fff; overflow:hidden; cursor:default;
+    border-right:1px solid #000; border-bottom:1px solid #000; }
+  .tile.over { background:#000; color:#fff; }
+  .tile .n { position:absolute; left:10px; top:8px; }
+  .tile .name { position:absolute; left:10px; right:10px; bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#d9d9d9; pointer-events:none; opacity:0; }
+  .tile .head { position:absolute; top:0; bottom:0; width:1px; background:#000; pointer-events:none; opacity:0; }
+  .tile .n, .tile .name { z-index:1; }
+  #bar { position:fixed; left:var(--m); right:var(--m); bottom:0; height:var(--bar); display:flex; gap:22px; align-items:center; }
   #bar label { display:flex; gap:8px; align-items:center; }
-  #bar input[type=range] { width:90px; accent-color:#888; }
-  #bar button { all:unset; cursor:pointer; padding:3px 10px; border:1px solid #ddd; border-radius:12px; }
-  #bar button.on { color:var(--ink); border-color:#999; }
+  #bar input[type=range] { width:90px; accent-color:#000; cursor:default; }
+  #bar button { all:unset; cursor:pointer; padding:3px 10px; border:1px solid #000; }
+  #bar button.on { background:#000; color:#fff; }
   #msg { margin-left:auto; }
 </style>
 </head>
@@ -65,22 +61,18 @@
   // build tiles
   for (var i = 0; i < N; i++) (function (i) {
     var el = document.createElement('div'); el.className = 'tile empty';
-    el.innerHTML = '<span class="n"></span><span class="hint">drop audio</span><span class="name"></span><span class="x" title="clear">×</span><i class="head" hidden></i>';
-    el.querySelector('.n').textContent = '0' + (i + 1);
-    var t = { el: el, buf: null, src: null, gain: null, lvl: 0, target: 0, dur: 0, t0: 0, off: 0 };
+    el.innerHTML = '<i class="fill"></i><span class="n"></span><span class="name"></span><i class="head" hidden></i>';
+        var t = { el: el, buf: null, src: null, gain: null, lvl: 0, target: 0, dur: 0, t0: 0, off: 0 };
     tiles.push(t); wall.appendChild(el);
+    el.addEventListener('pointermove', function () { lastMove = performance.now(); });
     el.addEventListener('pointerenter', function () { hovered = i; lastMove = performance.now(); retarget(); });
-    el.addEventListener('pointermove', function (e) {
-      var r = el.getBoundingClientRect(); lastMove = performance.now();
-      el.style.setProperty('--x', (e.clientX - r.left) + 'px'); el.style.setProperty('--y', (e.clientY - r.top) + 'px');
-    });
     el.addEventListener('dragover', function (e) { e.preventDefault(); el.classList.add('over'); });
     el.addEventListener('dragleave', function () { el.classList.remove('over'); });
     el.addEventListener('drop', function (e) {
       e.preventDefault(); e.stopPropagation(); el.classList.remove('over');
       load([].slice.call(e.dataTransfer.files), i);
     });
-    el.querySelector('.x').addEventListener('click', function (e) { e.stopPropagation(); clearTile(i); });
+    el.addEventListener('dblclick', function () { clearTile(i); });
   })(i);
   // never let a stray drop navigate away
   ['dragover', 'drop'].forEach(function (n) { window.addEventListener(n, function (e) { e.preventDefault(); }); });
@@ -119,7 +111,7 @@
     var s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(g);
     t.off = Math.random() * buf.duration; s.start(0, t.off); t.t0 = ctx.currentTime;
     t.buf = buf; t.src = s; t.gain = g; t.dur = buf.duration; t.lvl = 0; t.target = 0;
-    t.el.classList.remove('empty'); t.el.querySelector('.hint').hidden = true; t.el.querySelector('.head').hidden = false;
+    t.el.classList.remove('empty'); t.el.querySelector('.head').hidden = false; t.el.querySelector('.n').textContent = '0' + (i + 1);
     t.el.querySelector('.name').textContent = name + '  ' + Math.floor(buf.duration / 60) + ':' + ('0' + Math.round(buf.duration % 60)).slice(-2);
     retarget();
   }
@@ -127,8 +119,8 @@
     var t = tiles[i]; if (!t.src) return;
     try { t.src.stop(); t.src.disconnect(); t.gain.disconnect(); } catch (e) {}
     t.src = t.gain = t.buf = null; t.lvl = 0; t.target = 0;
-    t.el.classList.add('empty'); t.el.style.setProperty('--l', 0);
-    t.el.querySelector('.hint').hidden = false; t.el.querySelector('.head').hidden = true; t.el.querySelector('.name').textContent = '';
+    t.el.classList.add('empty'); t.el.querySelector('.head').hidden = true;
+    t.el.querySelector('.name').textContent = ''; t.el.querySelector('.n').textContent = '';
   }
 
   // stay-mode: the last hovered loaded tile is "on", all others release. Gain uses setTargetAtTime (click-free, retarget-safe);
@@ -154,9 +146,10 @@
       var tau = (t.target ? swell : rel) / 3 / 1.4 * 2; // lvl^2 follows the gain curve; lvl itself is its sqrt, so tau is doubled
       t.lvl += (t.target - t.lvl) * (1 - Math.exp(-dt / tau));
       if (Math.abs(t.lvl - t.target) < .001) t.lvl = t.target;
-      t.el.style.setProperty('--l', t.lvl.toFixed(3));
       var p = ((t.off + (ctx.currentTime - t.t0)) % t.dur) / t.dur;
-      t.el.querySelector('.head').style.left = (p * 100).toFixed(2) + '%';
+      var h = t.el.querySelector('.head'), f = t.el.querySelector('.fill');
+      h.style.left = (p * 100).toFixed(2) + '%'; f.style.width = (p * 100).toFixed(2) + '%';
+      h.style.opacity = f.style.opacity = t.lvl.toFixed(3);
     });
     // drift: wander when idle
     if (drift && ctx && now - lastMove > 8000 && now > (frame.next || 0)) {
@@ -175,7 +168,7 @@
   $('drift').onclick = function () { drift = !drift; this.classList.toggle('on', drift); lastMove = performance.now(); };
   function toggleHush() {
     if (!ctx) return; hushed = !hushed; $('hush').classList.toggle('on', hushed);
-    hushG.gain.cancelScheduledValues(ctx.currentTime); hushG.gain.setTargetAtTime(hushed ? 0 : 1, ctx.currentTime, .8);
+    hushG.gain.cancelScheduledValues(ctx.currentTime); hushG.gain.setTargetAtTime(hushed ? 0 : 1, ctx.currentTime, .005); // ~instant, 5ms constant avoids a click
   }
   $('hush').onclick = toggleHush;
   window.addEventListener('keydown', function (e) {
