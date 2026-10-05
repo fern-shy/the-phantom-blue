@@ -40,20 +40,22 @@
   #dock { grid-column:2; display:flex; gap:14px; align-items:center; }
   /* the four sliders live inside the control button and splay out sideways when it is on.
      max-width is measured in JS on toggle so the splay is exact at any window size */
-  #controls { display:flex; gap:18px; align-items:center; overflow:hidden; max-width:0; opacity:0;
+  #controls { display:flex; gap:12px; align-items:center; overflow:hidden; max-width:0; opacity:0;
     margin-right:-14px; transition:max-width .45s cubic-bezier(.2,.8,.2,1), margin-right .45s, opacity .25s; }
   #controls.open { opacity:1; margin-right:0; }
-  #bar label { display:flex; gap:8px; align-items:center; white-space:nowrap; }
+  #bar label { display:flex; gap:6px; align-items:center; white-space:nowrap; }
   #bar input[type=range] { width:72px; accent-color:#000; cursor:default; }
   #bar button { all:unset; cursor:pointer; padding:3px 10px; border:1px solid #000; }
   #bar button.on { background:#000; color:#fff; }
-  #drift { touch-action:none; }
+  #drift, #delay { touch-action:none; }
+  #bar button#rec { width:12px; height:12px; padding:0; border-radius:50%; border-color:#d10f0f; background:transparent; }
+  #bar button#rec.on { background:#e10600; box-shadow:0 0 0 3px rgba(225,6,0,.28); }
   #leash { position:fixed; left:0; top:0; height:1px; background:#fff; transform-origin:0 50%;
     pointer-events:none; z-index:6; mix-blend-mode:difference; }
   #msg { grid-column:3; justify-self:end; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   @media (max-width:820px) {
-    #controls { gap:12px; }
-    #bar input[type=range] { width:56px; }
+    #controls { gap:8px; }
+    #bar input[type=range] { width:28px; }
     #msg { display:none; }
   }
   /* the gate: 1-bit line art, inlined so the page stays a single offline file */
@@ -75,21 +77,26 @@
     <div id="controls">
       <label>master <input id="master" type="range" min="0" max="1" step=".01" value=".8"></label>
       <label>tone <input id="tone" type="range" min="0" max="1" step=".01" value="1"></label>
-      <label>swell <input id="swell" type="range" min="1" max="20" step=".5" value="5"></label>
+      <label>swell <input id="swell" type="range" min="1" max="20" step=".5" value="20"></label>
       <label>release <input id="rel" type="range" min="1" max="20" step=".5" value="20"></label>
     </div>
+    <button id="reverse">reverse</button>
+    <button id="delay">delay</button>
     <button id="drift">drift</button>
     <button id="hush">hush [space]</button>
+    <button id="rec" aria-label="record"></button>
   </div>
   <span id="msg"></span>
 </div>
 <div id="leash" hidden></div>
 <input id="file" type="file" accept="audio/*,.wav,.aif,.aiff,.mp3,.m4a,.aac,.flac,.ogg,.opus" multiple hidden>
+<script src="lamejs.js"></script>
 <script>
 (function () {
   'use strict';
-  var N = 9, ctx, master, lp, hushG, tiles = [], hovered = -1, pinned = -1, hushed = false, drift = false, lastMove = 0, fileAt = 0;
-  var swell = 5, rel = 20, wall = document.getElementById('wall'), msg = document.getElementById('msg');
+  var N = 9, ctx, master, lp, hushG, dryG, wetG, fbG, delayN, recDest, tiles = [], hovered = -1, pinned = -1, hushed = false, drift = false, lastMove = 0, fileAt = 0;
+  var swell = 20, rel = 20, reversed = false, delayOn = false, delaySec = 0.125, wall = document.getElementById('wall'), msg = document.getElementById('msg');
+  var recorder = null, recChunks = [];
   var STOCK = [
     '01 allegory.mp3', '02 sake.mp3', '03 formulaic.mp3',
     '04 magician.mp3', '05 nashville.mp3', '06 triptych.mp3',
@@ -97,6 +104,7 @@
   ];
   var driftMs = 22000, driftIdle = true, driftNext = 0, pull = null;
   var DRIFT_SLOW = 28000, DRIFT_FAST = 40, DRIFT_REACH = 260;
+  var BPM = 120, BEAT = 60 / BPM, DELAY_16 = BEAT / 4, DELAY_4 = BEAT * 16, DELAY_REACH = 260;
 
   function say(t) { msg.textContent = t; clearTimeout(say.t); say.t = setTimeout(function () { msg.textContent = ''; }, 5000); }
 
@@ -144,8 +152,14 @@
     ctx.resume();
     lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = .5; lp.frequency.value = 20000;
     hushG = ctx.createGain(); master = ctx.createGain(); master.gain.value = .64;
+    dryG = ctx.createGain(); wetG = ctx.createGain(); wetG.gain.value = 0;
+    fbG = ctx.createGain(); fbG.gain.value = 0;
+    delayN = ctx.createDelay(12); delayN.delayTime.value = DELAY_16;
     var lim = ctx.createDynamicsCompressor(); lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .003; lim.release.value = .25;
-    lp.connect(hushG); hushG.connect(master); master.connect(lim); lim.connect(ctx.destination);
+    lp.connect(hushG); hushG.connect(master);
+    master.connect(dryG); master.connect(delayN); delayN.connect(wetG); delayN.connect(fbG); fbG.connect(delayN);
+    dryG.connect(lim); wetG.connect(lim); lim.connect(ctx.destination);
+    recDest = ctx.createMediaStreamDestination(); lim.connect(recDest);
     document.getElementById('gate').hidden = true;
   }
   async function loadStock() {
@@ -186,12 +200,27 @@
       } catch (e) { say("can't read " + files[k].name + ' (try wav/mp3/m4a/flac)'); }
     }
   }
+  function reverseBuffer(buf) {
+    var rev = ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+    for (var c = 0; c < buf.numberOfChannels; c++) {
+      var a = buf.getChannelData(c), b = rev.getChannelData(c), n = a.length;
+      for (var i = 0; i < n; i++) b[i] = a[n - 1 - i];
+    }
+    return rev;
+  }
+  function bufPos(t) { return (t.off + (ctx.currentTime - t.t0)) % t.dur; }
+  function playBuf(t, buf, at, rev) {
+    if (t.src) { try { t.src.stop(); t.src.disconnect(); } catch (e) {} }
+    var s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(t.gain);
+    at = ((at % t.dur) + t.dur) % t.dur;
+    s.start(0, at); t.src = s; t.buf = buf; t.off = at; t.t0 = ctx.currentTime; t.playRev = rev;
+  }
   function setTile(i, buf, name) {
     clearTile(i);
     var t = tiles[i], g = ctx.createGain(); g.gain.value = 0; g.connect(lp);
-    var s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(g);
-    t.off = Math.random() * buf.duration; s.start(0, t.off); t.t0 = ctx.currentTime;
-    t.buf = buf; t.src = s; t.gain = g; t.dur = buf.duration; t.lvl = 0; t.target = 0;
+    t.gain = g; t.fwd = buf; t.revBuf = null; t.dur = buf.duration; t.lvl = 0; t.target = 0;
+    playBuf(t, reversed ? reverseBuffer(buf) : buf, Math.random() * buf.duration, reversed);
+    if (reversed) t.revBuf = t.buf;
     t.el.classList.remove('empty'); t.el.querySelector('.n').textContent = '0' + (i + 1);
     t.el.querySelector('.name').textContent = name + '  ' + Math.floor(buf.duration / 60) + ':' + ('0' + Math.round(buf.duration % 60)).slice(-2);
     retarget();
@@ -199,10 +228,21 @@
   function clearTile(i) {
     var t = tiles[i]; if (!t.src) return;
     try { t.src.stop(); t.src.disconnect(); t.gain.disconnect(); } catch (e) {}
-    t.src = t.gain = t.buf = null; t.lvl = 0; t.target = 0;
+    t.src = t.gain = t.buf = t.fwd = t.revBuf = null; t.lvl = 0; t.target = 0; t.playRev = false;
     t.el.classList.add('empty'); t.el.classList.remove('main'); t.fill.style.opacity = 0;
     t.el.querySelector('.name').textContent = ''; t.el.querySelector('.n').textContent = '';
     if (pinned === i) pinned = -1;
+  }
+  function flipReverse() {
+    if (!ctx) return;
+    reversed = !reversed; $('reverse').classList.toggle('on', reversed);
+    tiles.forEach(function (t) {
+      if (!t.src || !t.fwd) return;
+      var here = bufPos(t);
+      var orig = t.playRev ? (t.dur - here) : here;
+      if (reversed && !t.revBuf) t.revBuf = reverseBuffer(t.fwd);
+      playBuf(t, reversed ? t.revBuf : t.fwd, reversed ? (t.dur - orig) : orig, reversed);
+    });
   }
 
   // loops keep running; gain is the only thing that moves.
@@ -217,7 +257,7 @@
       var on = i === pinned || i === hv; t.target = on ? 1 : 0;
       t.el.classList.toggle('main', i === pinned);
       t.fill.style.opacity = on ? 1 : 0;
-      var rapid = (drift && !driftIdle) || pull;
+      var rapid = (drift && !driftIdle) || (pull && pull.kind === 'drift');
       var tau = (i === pinned)
         ? (on ? swell : rel) / 3
         : rapid ? Math.max(.018, driftMs / 1000 * .55) : (on ? swell : rel) / 3;
@@ -234,10 +274,11 @@
       var tau = (t.target ? swell : rel) / 3 / 1.4 * 2; // lvl^2 follows the gain curve; lvl itself is its sqrt, so tau is doubled
       t.lvl += (t.target - t.lvl) * (1 - Math.exp(-dt / tau));
       if (Math.abs(t.lvl - t.target) < .001) t.lvl = t.target;
-      var p = ((t.off + (ctx.currentTime - t.t0)) % t.dur) / t.dur;
+      var here = bufPos(t), orig = t.playRev ? (t.dur - here) : here;
+      var p = orig / t.dur;
       t.fill.style.clipPath = 'inset(0 ' + ((1 - p) * 100).toFixed(2) + '% 0 0)';
     });
-    if (drift && ctx && now > driftNext && (pull || !driftIdle || now - lastMove > 8000)) {
+    if (drift && ctx && now > driftNext && ((pull && pull.kind === 'drift') || !driftIdle || now - lastMove > 8000)) {
       var skip = hovered;
       var ready = tiles.map(function (t, i) { return t.buf ? i : -1; }).filter(function (i) { return i >= 0 && i !== skip; });
       if (ready.length) { hovered = ready[Math.floor(Math.random() * ready.length)]; retarget(); }
@@ -267,33 +308,139 @@
     L.style.width = d.toFixed(1) + 'px';
     L.style.transform = 'translate(' + pull.x + 'px,' + pull.y + 'px) rotate(' + Math.atan2(dy, dx) + 'rad)';
   }
-  $('drift').addEventListener('pointerdown', function (e) {
-    if (e.button) return;
-    e.preventDefault();
-    this.setPointerCapture(e.pointerId);
-    var r = this.getBoundingClientRect();
-    pull = { x: r.left + r.width / 2, y: r.top + r.height / 2, dragged: false, id: e.pointerId };
-  });
-  $('drift').addEventListener('pointermove', function (e) {
-    if (!pull || e.pointerId !== pull.id) return;
-    var d = Math.hypot(e.clientX - pull.x, e.clientY - pull.y);
-    if (d > 8) pull.dragged = true;
-    if (!pull.dragged) return;
-    drift = true; driftIdle = false; driftMs = driftFromPull(d);
-    this.classList.add('on');
-    driftNext = Math.min(driftNext, performance.now());
-    leashTo(e.clientX, e.clientY);
-  });
-  function endPull(e) {
-    if (!pull || (e && e.pointerId !== pull.id)) return;
-    if (!pull.dragged) {
-      drift = !drift; driftIdle = true; driftMs = DRIFT_SLOW;
-      $('drift').classList.toggle('on', drift); lastMove = performance.now();
-    }
-    $('leash').hidden = true; pull = null;
+  function delayFromPull(d) {
+    var t = Math.min(1, Math.max(0, (d - 12) / DELAY_REACH));
+    t = t * t;
+    return DELAY_16 * Math.pow(DELAY_4 / DELAY_16, t);
   }
-  $('drift').addEventListener('pointerup', endPull);
-  $('drift').addEventListener('pointercancel', endPull);
+  function applyDelay(on, seconds) {
+    if (!ctx) return;
+    if (seconds) delaySec = Math.min(DELAY_4, Math.max(DELAY_16, seconds));
+    delayOn = on;
+    var now = ctx.currentTime;
+    dryG.gain.setTargetAtTime(on ? 0 : 1, now, .02);
+    wetG.gain.setTargetAtTime(on ? 1 : 0, now, .02);
+    fbG.gain.setTargetAtTime(on ? .72 : 0, now, .02);
+    if (on) delayN.delayTime.setTargetAtTime(delaySec, now, .03);
+    $('delay').classList.toggle('on', on);
+  }
+  function armPull(el, kind, onDrag, onClick) {
+    el.addEventListener('pointerdown', function (e) {
+      if (e.button) return;
+      e.preventDefault();
+      this.setPointerCapture(e.pointerId);
+      var r = this.getBoundingClientRect();
+      pull = { x: r.left + r.width / 2, y: r.top + r.height / 2, dragged: false, id: e.pointerId, kind: kind, el: this };
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (!pull || pull.el !== this || e.pointerId !== pull.id) return;
+      var d = Math.hypot(e.clientX - pull.x, e.clientY - pull.y);
+      if (d > 8) pull.dragged = true;
+      if (!pull.dragged) return;
+      onDrag(d); leashTo(e.clientX, e.clientY);
+    });
+    function end(e) {
+      if (!pull || pull.el !== this || (e && e.pointerId !== pull.id)) return;
+      if (!pull.dragged) onClick();
+      $('leash').hidden = true; pull = null;
+    }
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+  armPull($('drift'), 'drift', function (d) {
+    drift = true; driftIdle = false; driftMs = driftFromPull(d);
+    $('drift').classList.add('on');
+    driftNext = Math.min(driftNext, performance.now());
+  }, function () {
+    drift = !drift; driftIdle = true; driftMs = DRIFT_SLOW;
+    $('drift').classList.toggle('on', drift); lastMove = performance.now();
+  });
+  armPull($('delay'), 'delay', function (d) {
+    if (!ctx) start();
+    applyDelay(true, delayFromPull(d));
+  }, function () {
+    if (!ctx) start();
+    applyDelay(!delayOn);
+  });
+  $('reverse').onclick = flipReverse;
+  function slugNow() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  var saving = false, MP3_KBPS = 96;
+  function saveFile(blob, name) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    say('saved ' + name);
+  }
+  function pcm16(ch, start, len) {
+    var out = new Int16Array(1152);
+    for (var i = 0; i < len; i++) {
+      var s = ch[start + i];
+      if (s > 1) s = 1; else if (s < -1) s = -1;
+      out[i] = s < 0 ? s * 32768 : s * 32767;
+    }
+    return out;
+  }
+  function encodeMp3(buffer) {
+    return new Promise(function (ok, no) {
+      try {
+        var channels = Math.min(2, buffer.numberOfChannels);
+        var enc = new lamejs.Mp3Encoder(channels, buffer.sampleRate, MP3_KBPS);
+        var left = buffer.getChannelData(0);
+        var right = channels > 1 ? buffer.getChannelData(1) : null;
+        var parts = [], i = 0, block = 1152;
+        (function step() {
+          try {
+            var n = 0;
+            while (i < left.length && n < 400) {
+              var len = Math.min(block, left.length - i);
+              var buf = right ? enc.encodeBuffer(pcm16(left, i, len), pcm16(right, i, len)) : enc.encodeBuffer(pcm16(left, i, len));
+              if (buf.length) parts.push(buf);
+              i += block; n++;
+            }
+            if (i < left.length) { setTimeout(step, 0); return; }
+            var end = enc.flush();
+            if (end.length) parts.push(end);
+            ok(new Blob(parts, { type: 'audio/mpeg' }));
+          } catch (e) { no(e); }
+        })();
+      } catch (e) { no(e); }
+    });
+  }
+  function toggleRec() {
+    if (!ctx || saving) return;
+    if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+    recChunks = [];
+    var types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+    var mime = '';
+    for (var i = 0; i < types.length; i++) if (window.MediaRecorder && MediaRecorder.isTypeSupported(types[i])) { mime = types[i]; break; }
+    var opts = mime ? { mimeType: mime, audioBitsPerSecond: MP3_KBPS * 1000 } : { audioBitsPerSecond: MP3_KBPS * 1000 };
+    try { recorder = new MediaRecorder(recDest.stream, opts); }
+    catch (e) { recorder = mime ? new MediaRecorder(recDest.stream, { mimeType: mime }) : new MediaRecorder(recDest.stream); }
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = function () {
+      var type = recorder.mimeType || 'audio/webm';
+      var blob = new Blob(recChunks, { type: type });
+      var name = 'gateway-' + slugNow() + '.mp3';
+      $('rec').classList.remove('on');
+      saving = true; say('encoding…');
+      blob.arrayBuffer().then(decode).then(encodeMp3).then(function (mp3) {
+        saveFile(mp3, name);
+      }).catch(function () {
+        var ext = /mp4|m4a|aac/.test(type) ? 'm4a' : 'webm';
+        saveFile(blob, name.replace(/\.mp3$/, '.' + ext));
+      }).then(function () { saving = false; });
+    };
+    recorder.start();
+    $('rec').classList.add('on');
+    say('recording');
+  }
+  $('rec').onclick = toggleRec;
   function toggleHush() {
     if (!ctx) return; hushed = !hushed; $('hush').classList.toggle('on', hushed);
     hushG.gain.cancelScheduledValues(ctx.currentTime); hushG.gain.setTargetAtTime(hushed ? 0 : 1, ctx.currentTime, .005); // ~instant, 5ms constant avoids a click
