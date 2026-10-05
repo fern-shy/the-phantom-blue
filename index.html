@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <title>the phantom blue</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
+<meta property="og:title" content="the phantom blue">
+<meta property="og:description" content="A live performance tool for the browser.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://fernshy.com/the-phantom-blue/">
+<meta property="og:image" content="https://fernshy.com/the-phantom-blue/gate.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://fernshy.com/the-phantom-blue/gate.jpg">
+<link rel="icon" href="gate.jpg">
 <style>
   :root { --m:10px; --bar:56px; }
   * { box-sizing:border-box; }
@@ -15,9 +24,20 @@
   #gate { position:fixed; inset:0; background:#fff; z-index:10; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:28px; }
   #gate h1 { margin:0; font-weight:400; font-size:20px; letter-spacing:.02em; }
-  #gate-actions { display:flex; gap:12px; }
+  #gate-actions { display:flex; gap:12px; align-items:center; }
   #gate button, #gate .gate-btn { all:unset; display:inline-block; cursor:pointer; padding:10px 30px; border:1px solid #000; }
   #gate button:hover, #gate .gate-btn:hover { background:#000; color:#fff; }
+  #gate button#info { width:22px; height:22px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-style:italic; line-height:1; }
+  #gate button#info.on { background:#000; color:#fff; }
+  #about { width:min(440px, calc(100vw - 40px)); max-height:0; margin-top:-28px; overflow:hidden; opacity:0;
+    pointer-events:none; visibility:hidden; text-align:left; background:#fff;
+    transition:max-height .45s cubic-bezier(.2,.8,.2,1), margin-top .45s cubic-bezier(.2,.8,.2,1), opacity .25s, visibility 0s linear .45s; }
+  #about.open { opacity:1; margin-top:0; pointer-events:auto; visibility:visible;
+    transition:max-height .45s cubic-bezier(.2,.8,.2,1), margin-top .45s cubic-bezier(.2,.8,.2,1), opacity .25s, visibility 0s; }
+  #about .in { border:1px solid #000; padding:12px 14px 14px; }
+  #about p { margin:0 0 8px; }
+  #about p:last-child { margin:0; }
+  #about a { color:inherit; }
   #wall { position:fixed; left:50%; top:calc((100vh - var(--bar)) / 2); transform:translate(-50%,-50%);
     width:min(calc(100vw - 2 * var(--m)), calc(100vh - var(--bar) - 2 * var(--m)));
     aspect-ratio:1; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
@@ -68,7 +88,27 @@
   <div id="gate-actions">
     <button id="go">enter</button>
     <button id="load">load</button>
+    <button id="info" aria-expanded="false" aria-label="info">i</button>
   </div>
+  <div id="about" aria-hidden="true">
+      <div class="in">
+        <p>An ornate iron gate, divided into a 3×3 grid of tiles.</p>
+        <p><a href="https://fernshy.com/the-phantom-blue/">fernshy.com/the-phantom-blue</a></p>
+        <p><b>hover</b> swells a tile.</p>
+        <p><b>click</b> a loaded zone to pin it as the main voice. Hover then blends other zones on top of it. Click the main again to unpin, or click another zone to move the focus.</p>
+        <p><b>control</b> folds four sliders away.<br>
+          <b>master</b> master volume.<br>
+          <b>tone</b> high pass eq.<br>
+          <b>swell</b> how long a tile takes to reach full volume (initialized at 20s).<br>
+          <b>release</b> how long a tile takes till silence after it is released (initialized at 20s).</p>
+        <p><b>reverse</b> flips every loop and sends the playhead back the other way.</p>
+        <p><b>delay</b> click for a fully wet 1/16 echo (120 BPM), or click-and-drag away from the button: farther reaches a 4/1 echo.</p>
+        <p><b>drift</b> click to wander slowly when idle, or drag away to set the cycle speed (farther = faster).</p>
+        <p><b>space</b> to hush. The red dot records what you hear; click again and it downloads a 96 kbps mp3 named gateway-YYYY-MM-DD-HHMMSS (encoded with <a href="https://lame.sourceforge.net/">LAME</a>, LGPL).</p>
+        <p><b>f</b> = fullscreen.</p>
+        <p>Files are not remembered between reloads (re-drop them).</p>
+      </div>
+    </div>
 </div>
 <div id="wall"></div>
 <div id="bar">
@@ -177,6 +217,18 @@
   }
   document.getElementById('go').onclick = start;
   document.getElementById('load').onclick = loadStock;
+  document.getElementById('info').onclick = function () {
+    var panel = document.getElementById('about');
+    var open = panel.classList.toggle('open');
+    this.classList.toggle('on', open);
+    this.setAttribute('aria-expanded', open);
+    panel.setAttribute('aria-hidden', !open);
+    if (!open) { panel.style.maxHeight = '0'; panel.style.overflow = 'hidden'; return; }
+    var full = panel.scrollHeight;
+    var room = window.innerHeight - document.querySelector('#gate h1').offsetHeight - document.getElementById('gate-actions').offsetHeight - 28 * 2 - 32;
+    panel.style.maxHeight = Math.min(full, Math.max(120, room)) + 'px';
+    panel.style.overflow = full > room ? 'auto' : 'hidden';
+  };
   document.getElementById('file').onchange = function () {
     if (!this.files.length) return;
     if (!ctx) start();

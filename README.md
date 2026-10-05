@@ -1,15 +1,22 @@
 # the phantom blue
 
-An ornate iron gate on black, divided into a 3×3 grid of nine zones. Loops keep running once loaded; hover and click decide who is heard.
+An ornate iron gate, divided into a 3×3 grid of tiles.
 
-**Run it:** serve the folder (or open the GitHub Pages URL) so *load* can fetch the nine bundled tracks. Double-clicking `index.html` still works for a blank canvas, but browsers block those fetches from a `file://` page.
+https://fernshy.com/the-phantom-blue.
 
-On the entrance: *enter* is an empty gate. *load* enters with `01 allegory.mp3` … `09 ephemera.mp3` already on the grid.
+**hover** swells a tile. 
+**click** a loaded zone to pin it as the main voice. Hover then blends other zones on top of it. Click the main again to unpin, or click another zone to move the focus.
 
-- **Load** on the entrance fills the grid from the bundled set. After entering, **drop** or **click** an empty zone to add your own. double-click clears.
-- **Hover** swells that zone. **Click** a loaded zone to pin it as the main voice — it stays up. Hover then blends other zones on top of it. Click the main again to unpin, or click another zone to move the pin (the old main releases).
-- Swell and release both start at 20 seconds. A sounding zone **inverts its own slice of the gate**; crossing a loaded zone snaps the inversion instantly.
-- **control** folds the four sliders away; click it and they splay out beside it. **master / tone** (low-pass) to tuck it under the band.
-- **reverse** flips every loop and sends the playhead back the other way. **delay** — click for a fully wet 1/16 echo (120 BPM), or click-and-drag away from the button: farther reaches a 4/1 echo. **drift** — click to wander slowly when idle, or drag away to set the cycle speed (farther = faster). **space** = hush. The red dot records what you hear; click again and it downloads a 96 kbps mp3 named `gateway-YYYY-MM-DD-HHMMSS` (encoded with [LAME](https://lame.sourceforge.net/), LGPL). **f** = fullscreen.
-- Files: WAV/MP3/M4A/FLAC work everywhere; AIFF only in Safari. For seamless loops use WAV and a different (odd) length per zone so they drift against each other.
-- Files are not remembered between reloads (re-drop them).
+**control** folds four sliders away. 
+**master** master volume.
+**tone** high pass eq.
+**swell** how long a tile takes to reach full volume (initialized at 20s).
+**release** how long a tile takes till silence after it is released (initialized at 20s).
+
+**reverse** flips every loop and sends the playhead back the other way. 
+**delay** click for a fully wet 1/16 echo (120 BPM), or click-and-drag away from the button: farther reaches a 4/1 echo. 
+**drift** click to wander slowly when idle, or drag away to set the cycle speed (farther = faster). 
+**space** to hush. The red dot records what you hear; click again and it downloads a 96 kbps mp3 named `gateway-YYYY-MM-DD-HHMMSS` (encoded with [LAME](https://lame.sourceforge.net/), LGPL). 
+**f** = fullscreen.
+
+Files are not remembered between reloads (re-drop them).
