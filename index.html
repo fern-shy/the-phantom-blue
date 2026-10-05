@@ -66,6 +66,8 @@
   #bar label { display:flex; gap:6px; align-items:center; white-space:nowrap; }
   #bar input[type=range] { width:72px; accent-color:#000; cursor:default; }
   #bar button { all:unset; cursor:pointer; padding:3px 10px; border:1px solid #000; }
+  #bar button#control { order:1; } #controls { order:2; } #bar button#reverse { order:3; }
+  #bar button#delay { order:4; } #bar button#drift { order:5; } #bar button#hush { order:6; } #bar button#rec { order:7; }
   #bar button.on { background:#000; color:#fff; }
   #drift, #delay { touch-action:none; }
   #bar button#rec { width:12px; height:12px; padding:0; border-radius:50%; border-color:#d10f0f; background:transparent; }
@@ -73,9 +75,18 @@
   #leash { position:fixed; left:0; top:0; height:1px; background:#fff; transform-origin:0 50%;
     pointer-events:none; z-index:6; mix-blend-mode:difference; }
   #msg { grid-column:3; justify-self:end; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #row-play, #row-main { display:contents; }
   @media (max-width:820px) {
+    :root { --bar:76px; }
+    #bar { height:auto; min-height:var(--bar); display:flex; align-items:center; justify-content:center; padding:8px 10px; }
+    #dock { flex-direction:column; align-items:center; gap:8px; width:100%; }
+    #row-play, #row-main { display:flex; align-items:center; justify-content:center; gap:10px; max-width:100%; }
+    #row-main { position:relative; flex-wrap:wrap; }
+    #controls:not(.open) { position:absolute; width:0; margin:0; pointer-events:none; }
     #controls { gap:8px; }
+    #controls.open { position:static; order:-1; flex-basis:100%; justify-content:center; margin:0; }
     #bar input[type=range] { width:28px; }
+    #hush .key { display:none; }
     #msg { display:none; }
   }
   /* the gate: 1-bit line art, inlined so the page stays a single offline file */
@@ -113,18 +124,22 @@
 <div id="wall"></div>
 <div id="bar">
   <div id="dock">
-    <button id="control" aria-expanded="false">control</button>
-    <div id="controls">
-      <label>master <input id="master" type="range" min="0" max="1" step=".01" value=".8"></label>
-      <label>tone <input id="tone" type="range" min="0" max="1" step=".01" value="1"></label>
-      <label>swell <input id="swell" type="range" min="1" max="20" step=".5" value="20"></label>
-      <label>release <input id="rel" type="range" min="1" max="20" step=".5" value="20"></label>
+    <div id="row-play">
+      <button id="reverse">reverse</button>
+      <button id="delay">delay</button>
+      <button id="drift">drift</button>
     </div>
-    <button id="reverse">reverse</button>
-    <button id="delay">delay</button>
-    <button id="drift">drift</button>
-    <button id="hush">hush [space]</button>
-    <button id="rec" aria-label="record"></button>
+    <div id="row-main">
+      <button id="control" aria-expanded="false">control</button>
+      <div id="controls">
+        <label>master <input id="master" type="range" min="0" max="1" step=".01" value=".8"></label>
+        <label>tone <input id="tone" type="range" min="0" max="1" step=".01" value="1"></label>
+        <label>swell <input id="swell" type="range" min="1" max="20" step=".5" value="20"></label>
+        <label>release <input id="rel" type="range" min="1" max="20" step=".5" value="20"></label>
+      </div>
+      <button id="hush">hush <span class="key">[space]</span></button>
+      <button id="rec" aria-label="record"></button>
+    </div>
   </div>
   <span id="msg"></span>
 </div>
@@ -340,11 +355,16 @@
   })(prev);
 
   function $(id) { return document.getElementById(id); }
+  function layControls() {
+    var c = $('controls');
+    c.style.maxWidth = c.classList.contains('open') ? (matchMedia('(max-width:820px)').matches ? '100%' : c.scrollWidth + 'px') : 0;
+  }
   $('control').onclick = function () {
     var c = $('controls'), open = c.classList.toggle('open');
-    c.style.maxWidth = open ? c.scrollWidth + 'px' : 0;
+    layControls();
     this.classList.toggle('on', open); this.setAttribute('aria-expanded', open);
   };
+  window.addEventListener('resize', layControls);
   $('master').oninput = function () { if (ctx) master.gain.setTargetAtTime(this.value * this.value, ctx.currentTime, .03); };
   $('tone').oninput = function () { if (ctx) lp.frequency.setTargetAtTime(250 * Math.pow(80, +this.value), ctx.currentTime, .03); };
   $('swell').oninput = function () { swell = +this.value; };
